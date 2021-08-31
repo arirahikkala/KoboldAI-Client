@@ -46,6 +46,7 @@ modellist = [
     ["Custom GPT-2 (eg CloverEdition)", "GPT2Custom", ""],
     ["Google Colab", "Colab", ""],
     ["OpenAI API (requires API key)", "OAI", ""],
+    ["AI21 Studio API (requires API key)", "AI21", ""],
     ["Read Only (No AI)", "ReadOnly", ""]
     ]
 
@@ -81,9 +82,11 @@ class vars:
     url         = "https://api.inferkit.com/v1/models/standard/generate" # InferKit API URL
     oaiurl      = "" # OpenAI API URL
     oaiengines  = "https://api.openai.com/v1/engines"
+    ai21url     = "https://api.ai21.com/studio/v1/j1-jumbo/complete" # AI21 Studio  API URL
     colaburl    = ""     # Ngrok url for Google Colab mode
     apikey      = ""     # API key to use for InferKit API calls
     oaiapikey   = ""     # API key to use for OpenAI API calls
+    ai21apikey  = ""     # API key to use for AI21 Studio API calls
     savedir     = getcwd()+"\stories"
     hascuda     = False  # Whether torch has detected CUDA on the system
     usegpu      = False  # Whether to launch pipeline with GPU support
@@ -141,6 +144,39 @@ def gettokenids(char):
             keys.append(key)
     return keys
 
+def checkApiKey(api_key_var, api_name):
+    if(not path.exists("client.settings")):
+        # If the client settings file doesn't exist, create it
+        print("{0}Please enter your {2} API key:{1}\n".format(colors.CYAN, colors.END, api_name))
+        setattr(vars, api_key_var, input("Key> "))
+        # Write API key to file
+        file = open("client.settings", "w")
+        try:
+            js = {api_key_var: getattr(vars, api_key_var)}
+            file.write(json.dumps(js, indent=3))
+        finally:
+            file.close()
+    else:
+        # Otherwise open it up
+        file = open("client.settings", "r")
+        # Check if API key exists
+        js = json.load(file)
+        if(api_key_var in js and js[api_key_var] != ""):
+            # API key exists, grab it and close the file
+            setattr(vars, api_key_var, js[api_key_var])
+            file.close()
+        else:
+            # Get API key, add it to settings object, and write it to disk
+            print("{0}Please enter your {2} API key:{1}\n".format(colors.CYAN, colors.END, api_name))
+            setattr(vars, api_key_var, input("Key> "))
+            js[api_key_var] = getattr(vars, api_key_var)
+            # Write API key to file
+            file = open("client.settings", "w")
+            try:
+                file.write(json.dumps(js, indent=3))
+            finally:
+                file.close()
+
 #==================================================================#
 # Startup
 #==================================================================#
@@ -150,7 +186,7 @@ print("{0}Welcome to the KoboldAI Client!\nSelect an AI model to continue:{1}\n"
 getModelSelection()
 
 # If transformers model was selected & GPU available, ask to use CPU or GPU
-if(not vars.model in ["InferKit", "Colab", "OAI", "ReadOnly"]):
+if(not vars.model in ["InferKit", "Colab", "OAI", "AI21", "ReadOnly"]):
     # Test for GPU support
     import torch
     print("{0}Looking for GPU support...{1}".format(colors.PURPLE, colors.END), end="")
@@ -180,71 +216,11 @@ if(not vars.model in ["InferKit", "Colab", "OAI", "ReadOnly"]):
 
 # Ask for API key if InferKit was selected
 if(vars.model == "InferKit"):
-    if(not path.exists("client.settings")):
-        # If the client settings file doesn't exist, create it
-        print("{0}Please enter your InferKit API key:{1}\n".format(colors.CYAN, colors.END))
-        vars.apikey = input("Key> ")
-        # Write API key to file
-        file = open("client.settings", "w")
-        try:
-            js = {"apikey": vars.apikey}
-            file.write(json.dumps(js, indent=3))
-        finally:
-            file.close()
-    else:
-        # Otherwise open it up
-        file = open("client.settings", "r")
-        # Check if API key exists
-        js = json.load(file)
-        if("apikey" in js and js["apikey"] != ""):
-            # API key exists, grab it and close the file
-            vars.apikey = js["apikey"]
-            file.close()
-        else:
-            # Get API key, add it to settings object, and write it to disk
-            print("{0}Please enter your InferKit API key:{1}\n".format(colors.CYAN, colors.END))
-            vars.apikey = input("Key> ")
-            js["apikey"] = vars.apikey
-            # Write API key to file
-            file = open("client.settings", "w")
-            try:
-                file.write(json.dumps(js, indent=3))
-            finally:
-                file.close()
+    checkApiKey("apikey", "InferKit")
 
 # Ask for API key if OpenAI was selected
 if(vars.model == "OAI"):
-    if(not path.exists("client.settings")):
-        # If the client settings file doesn't exist, create it
-        print("{0}Please enter your OpenAI API key:{1}\n".format(colors.CYAN, colors.END))
-        vars.oaiapikey = input("Key> ")
-        # Write API key to file
-        file = open("client.settings", "w")
-        try:
-            js = {"oaiapikey": vars.oaiapikey}
-            file.write(json.dumps(js, indent=3))
-        finally:
-            file.close()
-    else:
-        # Otherwise open it up
-        file = open("client.settings", "r")
-        # Check if API key exists
-        js = json.load(file)
-        if("oaiapikey" in js and js["oaiapikey"] != ""):
-            # API key exists, grab it and close the file
-            vars.oaiapikey = js["oaiapikey"]
-            file.close()
-        else:
-            # Get API key, add it to settings object, and write it to disk
-            print("{0}Please enter your OpenAI API key:{1}\n".format(colors.CYAN, colors.END))
-            vars.oaiapikey = input("Key> ")
-            js["oaiapikey"] = vars.oaiapikey
-            # Write API key to file
-            file = open("client.settings", "w")
-            try:
-                file.write(json.dumps(js, indent=3))
-            finally:
-                file.close()
+    checkApiKey("oaiapikey", "OpenAI")
     
     # Get list of models from OAI
     print("{0}Retrieving engine list...{1}".format(colors.PURPLE, colors.END), end="")
@@ -279,6 +255,10 @@ if(vars.model == "OAI"):
         print(req.json())
         quit()
 
+
+if(vars.model == "AI21"):
+    checkApiKey("ai21apikey", "AI21 Studio")
+
 # Ask for ngrok url if Google Colab was selected
 if(vars.model == "Colab"):
     print("{0}Please enter the ngrok.io or trycloudflare.com URL displayed in Google Colab:{1}\n".format(colors.CYAN, colors.END))
@@ -302,7 +282,7 @@ socketio = SocketIO(app)
 print("{0}OK!{1}".format(colors.GREEN, colors.END))
 
 # Start transformers and create pipeline
-if(not vars.model in ["InferKit", "Colab", "OAI", "ReadOnly"]):
+if(not vars.model in ["InferKit", "Colab", "OAI", "AI21", "ReadOnly"]):
     if(not vars.noai):
         print("{0}Initializing transformers, please wait...{1}".format(colors.PURPLE, colors.END))
         from transformers import pipeline, GPT2Tokenizer, GPT2LMHeadModel, GPTNeoForCausalLM
@@ -348,6 +328,10 @@ else:
         from transformers import GPT2Tokenizer
         tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-neo-2.7B")
     elif(vars.model == "OAI"):
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    elif(vars.model == "AI21"):
+        # this is not the right tokenizer at all, but should keep us within the token budget almost always
         from transformers import GPT2Tokenizer
         tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
 
@@ -724,7 +708,7 @@ def calcsubmit(txt):
     if(vars.authornote != ""):
         anotetxt  = "\n[Author's note: "+vars.authornote+"]\n"
     
-    # For all transformers models
+    # For all GPT models
     if(vars.model != "InferKit"):
         anotetkns    = []  # Placeholder for Author's Note tokens
         
@@ -752,12 +736,14 @@ def calcsubmit(txt):
             subtxt = vars.memory + winfo + anotetxt + vars.prompt
             lnsub  = lnmem + lnwi + lnprompt + lnanote
             
-            if(not vars.model in ["Colab", "OAI"]):
+            if(not vars.model in ["Colab", "OAI", "AI21"]):
                 generate(subtxt, lnsub+1, lnsub+vars.genamt)
             elif(vars.model == "Colab"):
                 sendtocolab(subtxt, lnsub+1, lnsub+vars.genamt)
             elif(vars.model == "OAI"):
                 oairequest(subtxt, lnsub+1, lnsub+vars.genamt)
+            elif(vars.model == "AI21"):
+                ai21request(subtxt)
         else:
             tokens     = []
             
@@ -808,7 +794,7 @@ def calcsubmit(txt):
             # Send completed bundle to generator
             ln = len(tokens)
             
-            if(not vars.model in ["Colab", "OAI"]):
+            if(not vars.model in ["Colab", "OAI", "AI21"]):
                 generate (
                     tokenizer.decode(tokens),
                     ln+1,
@@ -826,9 +812,13 @@ def calcsubmit(txt):
                     ln+1,
                     ln+vars.genamt
                     )
+            elif(vars.model == "AI21"):
+                ai21request(tokenizer.decode(tokens))
+
                     
-    # For InferKit web API
-    else:
+    # For AI21 Studio API, we don't have a tokenizer yet (they're using a custom SentencePiece tokenizer),
+    # and we don't really want to spam the tokenizer API
+    elif(vars.model == "AI21"):
         # Check if we have the action depth to hit our A.N. depth
         if(anotetxt != "" and actionlen < vars.andepth):
             forceanote = True
@@ -1399,6 +1389,50 @@ def ikrequest(txt):
         set_aibusy(0)
 
 #==================================================================#
+#  Assembles game data into a request to AI21 API
+#==================================================================#
+def ai21request(txt):
+    # Log request to console
+    print("{0}Len:{1}, Txt:{2}{3}".format(colors.YELLOW, len(txt), txt, colors.END))
+    
+    # Store context in memory to use it for comparison with generated content
+    vars.lastctx = txt
+    
+    # Build request JSON data
+    reqdata = {
+        'prompt': txt,
+        'numResults': vars.numseqs,
+        'maxTokens': vars.genamt,
+        'temperature': vars.temp,
+        'topP': vars.top_p,
+    }
+    
+    req = requests.post(
+        vars.ai21url, 
+        json    = reqdata,
+        headers = {
+            'Authorization': 'Bearer '+vars.ai21apikey,
+            'Content-Type': 'application/json'
+            }
+        )
+    
+    # Deal with the response
+    if(req.status_code == 200):
+        gens = [{"generated_text": c['data']['text']} for c in req.json()["completions"]]
+        foo = open("foo.json", "wb")
+        foo.write(req.content)
+        foo.close()
+        print(req.content)
+        print(gens)
+        genselect(gens)
+        set_aibusy(0)
+    else:
+        # No idea how this API does error reporting
+        errmsg = "AI21 Studio API Error: {0} - {1}".format(type, req.content)
+        emit('from_server', {'cmd': 'errmsg', 'data': errmsg})
+        set_aibusy(0)
+
+#==================================================================#
 #  Assembles game data into a request to OpenAI API
 #==================================================================#
 def oairequest(txt, min, max):
@@ -1813,5 +1847,5 @@ if __name__ == "__main__":
     
     # Start Flask/SocketIO (Blocking, so this must be last method!)
     print("{0}Server started!\rYou may now connect with a browser at http://127.0.0.1:5000/{1}".format(colors.GREEN, colors.END))
-    #socketio.run(app, host='0.0.0.0', port=5000)
-    socketio.run(app)
+    socketio.run(app, host='0.0.0.0', port=5000)
+    #socketio.run(app)
